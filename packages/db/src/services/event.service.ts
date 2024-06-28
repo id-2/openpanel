@@ -7,6 +7,7 @@ import { toDots } from '@openpanel/common';
 import { redis, redisPub } from '@openpanel/redis';
 import type { IChartEventFilter } from '@openpanel/validation';
 
+import { eventBuffer } from '../buffer';
 import {
   ch,
   chQuery,
@@ -287,25 +288,9 @@ export async function createEvent(
     referrer_type: payload.referrerType ?? '',
   };
 
-  const res = await ch.insert({
-    table: 'events',
-    values: [event],
-    format: 'JSONEachRow',
-    clickhouse_settings: {
-      date_time_input_format: 'best_effort',
-    },
-  });
-
-  redisPub.publish('event', superjson.stringify(transformEvent(event)));
-  redis.set(
-    `live:event:${event.project_id}:${event.profile_id}`,
-    '',
-    'EX',
-    60 * 5
-  );
+  await eventBuffer.insert(event);
 
   return {
-    ...res,
     document: event,
   };
 }
