@@ -13,7 +13,7 @@ import { eventsJob } from './jobs/events';
 
 const PORT = parseInt(process.env.WORKER_PORT || '3000', 10);
 const serverAdapter = new ExpressAdapter();
-serverAdapter.setBasePath('/');
+serverAdapter.setBasePath(process.env.SELF_HOSTED ? '/worker' : '/');
 const app = express();
 
 const workerOptions: WorkerOptions = {
@@ -29,10 +29,6 @@ async function start() {
   createBullBoard({
     queues: [new BullMQAdapter(eventsQueue), new BullMQAdapter(cronQueue)],
     serverAdapter: serverAdapter,
-    options: {
-      uiConfig: {},
-      uiBasePath: '/worker',
-    },
   });
 
   app.use('/', serverAdapter.getRouter());
