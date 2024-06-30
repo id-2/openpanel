@@ -201,7 +201,7 @@ class ProfileBuffer extends RedisBuffer<IClickhouseProfile> {
 export const profileBuffer = new ProfileBuffer({
   table: 'profiles',
   redis: redis,
-  batchSize: 5,
+  batchSize: process.env.BATCH_SIZE ? parseInt(process.env.BATCH_SIZE) : 50,
   async beforeFlush(queue) {
     try {
       await ch.insert({
@@ -220,7 +220,7 @@ export const profileBuffer = new ProfileBuffer({
 export const eventBuffer = new EventBuffer({
   table: 'events',
   redis: redis,
-  batchSize: 5,
+  batchSize: process.env.BATCH_SIZE ? parseInt(process.env.BATCH_SIZE) : 50,
   onCompleted(savedEvents) {
     for (const event of savedEvents) {
       redisPub.publish('event', SuperJSON.stringify(transformEvent(event)));

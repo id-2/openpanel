@@ -65,7 +65,9 @@ async function start() {
     {
       jobId: 'flush',
       repeat: {
-        every: 1000 * 10,
+        every: process.env.BATCH_INTERVAL
+          ? parseInt(process.env.BATCH_INTERVAL, 10)
+          : 1000 * 10,
       },
     }
   );
