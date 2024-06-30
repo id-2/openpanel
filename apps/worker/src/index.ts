@@ -55,6 +55,20 @@ async function start() {
       },
     }
   );
+
+  await cronQueue.add(
+    'flush',
+    {
+      type: 'flush',
+      payload: undefined,
+    },
+    {
+      jobId: 'flush',
+      repeat: {
+        every: 1000 * 10,
+      },
+    }
+  );
 }
 
 start();

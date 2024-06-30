@@ -39,10 +39,15 @@ export type EventsQueuePayload =
   | EventsQueuePayloadCreateSessionEnd
   | EventsQueuePayloadIncomingEvent;
 
-export interface CronQueuePayload {
+export type CronQueuePayloadSalt = {
   type: 'salt';
   payload: undefined;
-}
+};
+export type CronQueuePayloadFlush = {
+  type: 'flush';
+  payload: undefined;
+};
+export type CronQueuePayload = CronQueuePayloadSalt | CronQueuePayloadFlush;
 
 export const eventsQueue = new Queue<EventsQueuePayload>('events', {
   connection,

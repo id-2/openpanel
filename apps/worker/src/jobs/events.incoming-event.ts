@@ -1,8 +1,7 @@
-import { logger } from '@/utils/logger';
 import { getReferrerWithQuery, parseReferrer } from '@/utils/parse-referrer';
 import { isUserAgentSet, parseUserAgent } from '@/utils/parse-user-agent';
 import { isSameDomain, parsePath } from '@/utils/url';
-import type { Job, JobsOptions } from 'bullmq';
+import type { Job } from 'bullmq';
 import { omit } from 'ramda';
 import { escape } from 'sqlstring';
 import { v4 as uuid } from 'uuid';
@@ -94,59 +93,18 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
     return createEvent(payload);
   }
 
-  const [sessionEndKeys, eventsKeys] = await Promise.all([
-    redis.keys(`bull:events:sessionEnd:${projectId}:*`),
-    redis.keys(`bull:events:event:${projectId}:*`),
-  ]);
+  const sessionEnd = await getSessionEnd({
+    projectId,
+    currentDeviceId,
+    previousDeviceId,
+    currentDeviceIdDeprecated,
+    previousDeviceIdDeprecated,
+  });
 
-  const sessionEndJobCurrentDeviceId = await findJobByPrefix(
-    eventsQueue,
-    sessionEndKeys,
-    `sessionEnd:${projectId}:${currentDeviceId}:`
-  );
-  const sessionEndJobPreviousDeviceId = await findJobByPrefix(
-    eventsQueue,
-    sessionEndKeys,
-    `sessionEnd:${projectId}:${previousDeviceId}:`
-  );
-  // TODO: Remove after 2024-09-26
-  const sessionEndJobCurrentDeviceIdDeprecated = await findJobByPrefix(
-    eventsQueue,
-    sessionEndKeys,
-    `sessionEnd:${projectId}:${currentDeviceIdDeprecated}:`
-  );
-  const sessionEndJobPreviousDeviceIdDeprecated = await findJobByPrefix(
-    eventsQueue,
-    sessionEndKeys,
-    `sessionEnd:${projectId}:${previousDeviceIdDeprecated}:`
-  );
+  const createSessionStart = sessionEnd === null;
 
-  let createSessionStart = false;
-
-  if (sessionEndJobCurrentDeviceId) {
+  if (createSessionStart) {
     deviceId = currentDeviceId;
-    const diff = Date.now() - sessionEndJobCurrentDeviceId.timestamp;
-    sessionEndJobCurrentDeviceId.changeDelay(diff + SESSION_END_TIMEOUT);
-  } else if (sessionEndJobPreviousDeviceId) {
-    deviceId = previousDeviceId;
-    const diff = Date.now() - sessionEndJobPreviousDeviceId.timestamp;
-    sessionEndJobPreviousDeviceId.changeDelay(diff + SESSION_END_TIMEOUT);
-  } else if (sessionEndJobCurrentDeviceIdDeprecated) {
-    deviceId = currentDeviceIdDeprecated;
-    const diff = Date.now() - sessionEndJobCurrentDeviceIdDeprecated.timestamp;
-    sessionEndJobCurrentDeviceIdDeprecated.changeDelay(
-      diff + SESSION_END_TIMEOUT
-    );
-  } else if (sessionEndJobPreviousDeviceIdDeprecated) {
-    deviceId = previousDeviceIdDeprecated;
-    const diff = Date.now() - sessionEndJobPreviousDeviceIdDeprecated.timestamp;
-    sessionEndJobPreviousDeviceIdDeprecated.changeDelay(
-      diff + SESSION_END_TIMEOUT
-    );
-  } else {
-    deviceId = currentDeviceId;
-    createSessionStart = true;
-    // Queue session end
     eventsQueue.add(
       'event',
       {
@@ -160,13 +118,11 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
         jobId: `sessionEnd:${projectId}:${deviceId}:${Date.now()}`,
       }
     );
+  } else {
+    deviceId = sessionEnd.deviceId;
+    const diff = Date.now() - sessionEnd.job.timestamp;
+    sessionEnd.job.changeDelay(diff + SESSION_END_TIMEOUT);
   }
-
-  const prevEventJob = await findJobByPrefix(
-    eventsQueue,
-    eventsKeys,
-    `event:${projectId}:${deviceId}:`
-  );
 
   const [sessionStartEvent] = await getEvents(
     `SELECT * FROM events WHERE name = 'session_start' AND device_id = ${escape(deviceId)} AND project_id = ${escape(projectId)} ORDER BY created_at DESC LIMIT 1`
@@ -205,74 +161,6 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
     meta: undefined,
   };
 
-  const isDelayed = prevEventJob ? await prevEventJob?.isDelayed() : false;
-
-  if (isDelayed && prevEventJob && prevEventJob.data.type === 'createEvent') {
-    const prevEvent = prevEventJob.data.payload;
-    const duration = getTime(payload.createdAt) - getTime(prevEvent.createdAt);
-    job.log(`prevEvent ${JSON.stringify(prevEvent, null, 2)}`);
-
-    // Set path from prev screen_view event if current event is not a screen_view
-    if (payload.name != 'screen_view') {
-      payload.path = prevEvent.path;
-    }
-
-    if (payload.name === 'screen_view') {
-      if (duration < 0) {
-        logger.info({ prevEvent, payload }, 'Duration is negative');
-      } else {
-        try {
-          // Skip update duration if it's wrong
-          // Seems like request is not in right order
-          await prevEventJob.updateData({
-            type: 'createEvent',
-            payload: {
-              ...prevEvent,
-              duration,
-            },
-          });
-        } catch (error) {
-          logger.error(
-            {
-              error,
-              prevEventJobStatus: await prevEventJob
-                .getState()
-                .catch(() => 'unknown'),
-            },
-            `Failed update delayed job`
-          );
-        }
-      }
-
-      try {
-        await prevEventJob.promote();
-      } catch (error) {
-        logger.error(
-          {
-            error,
-            prevEventJobStatus: await prevEventJob
-              .getState()
-              .catch(() => 'unknown'),
-            prevEvent,
-            currEvent: payload,
-          },
-          `Failed to promote job`
-        );
-      }
-    }
-  } else if (payload.name !== 'screen_view') {
-    job.log(
-      `no previous job ${JSON.stringify(
-        {
-          prevEventJob,
-          payload,
-        },
-        null,
-        2
-      )}`
-    );
-  }
-
   if (createSessionStart) {
     // We do not need to queue session_start
     await createEvent({
@@ -283,40 +171,69 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
     });
   }
 
-  const options: JobsOptions = {};
-  if (payload.name === 'screen_view') {
-    options.delay = SESSION_TIMEOUT;
-    options.jobId = `event:${projectId}:${deviceId}:${Date.now()}`;
+  return createEvent(payload);
+}
+
+async function getSessionEnd({
+  projectId,
+  currentDeviceId,
+  previousDeviceId,
+  currentDeviceIdDeprecated,
+  previousDeviceIdDeprecated,
+}: {
+  projectId: string;
+  currentDeviceId: string;
+  previousDeviceId: string;
+  currentDeviceIdDeprecated: string;
+  previousDeviceIdDeprecated: string;
+}) {
+  const sessionEndKeys = await redis.keys(
+    `bull:events:sessionEnd:${projectId}:*`
+  );
+
+  const sessionEndJobCurrentDeviceId = await findJobByPrefix(
+    eventsQueue,
+    sessionEndKeys,
+    `sessionEnd:${projectId}:${currentDeviceId}:`
+  );
+  if (sessionEndJobCurrentDeviceId) {
+    return { deviceId: currentDeviceId, job: sessionEndJobCurrentDeviceId };
   }
 
-  job.log(
-    `event is queued ${JSON.stringify(
-      {
-        ua,
-        uaInfo,
-        referrer,
-        profileId,
-        projectId,
-        deviceId,
-        geo,
-        sessionStartEvent,
-        path,
-        payload,
-      },
-      null,
-      2
-    )}`
+  const sessionEndJobPreviousDeviceId = await findJobByPrefix(
+    eventsQueue,
+    sessionEndKeys,
+    `sessionEnd:${projectId}:${previousDeviceId}:`
   );
+  if (sessionEndJobPreviousDeviceId) {
+    return { deviceId: previousDeviceId, job: sessionEndJobPreviousDeviceId };
+  }
 
-  // Queue event instead of creating it,
-  // since we want to update duration if we get more events in the same session
-  // The event will only be delayed if it's a screen_view event
-  return eventsQueue.add(
-    'event',
-    {
-      type: 'createEvent',
-      payload,
-    },
-    options
+  // TODO: Remove after 2024-09-26
+  const sessionEndJobCurrentDeviceIdDeprecated = await findJobByPrefix(
+    eventsQueue,
+    sessionEndKeys,
+    `sessionEnd:${projectId}:${currentDeviceIdDeprecated}:`
   );
+  if (sessionEndJobCurrentDeviceIdDeprecated) {
+    return {
+      deviceId: currentDeviceIdDeprecated,
+      job: sessionEndJobCurrentDeviceIdDeprecated,
+    };
+  }
+
+  const sessionEndJobPreviousDeviceIdDeprecated = await findJobByPrefix(
+    eventsQueue,
+    sessionEndKeys,
+    `sessionEnd:${projectId}:${previousDeviceIdDeprecated}:`
+  );
+  if (sessionEndJobPreviousDeviceIdDeprecated) {
+    return {
+      deviceId: previousDeviceIdDeprecated,
+      job: sessionEndJobPreviousDeviceIdDeprecated,
+    };
+  }
+
+  // Create session
+  return null;
 }
