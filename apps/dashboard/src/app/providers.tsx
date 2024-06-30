@@ -63,6 +63,7 @@ function AllProviders({ children }: { children: React.ReactNode }) {
       disableTransitionOnChange
     >
       <OpenpanelProvider
+        url="https://op.coderax.se/api"
         clientId="d32780cb-1c60-4a1b-bb5a-ffc11973255e"
         profileId={userId || undefined}
         trackScreenViews
