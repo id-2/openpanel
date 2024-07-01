@@ -71,6 +71,21 @@ async function start() {
       },
     }
   );
+  await cronQueue.add(
+    'flush',
+    {
+      type: 'flushProfile',
+      payload: undefined,
+    },
+    {
+      jobId: 'flushProfile',
+      repeat: {
+        every: process.env.BATCH_INTERVAL
+          ? parseInt(process.env.BATCH_INTERVAL, 10)
+          : 1000 * 10,
+      },
+    }
+  );
 }
 
 start();

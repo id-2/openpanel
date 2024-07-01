@@ -47,7 +47,14 @@ export type CronQueuePayloadFlush = {
   type: 'flush';
   payload: undefined;
 };
-export type CronQueuePayload = CronQueuePayloadSalt | CronQueuePayloadFlush;
+export type CronQueuePayloadFlushProfile = {
+  type: 'flushProfile';
+  payload: undefined;
+};
+export type CronQueuePayload =
+  | CronQueuePayloadSalt
+  | CronQueuePayloadFlush
+  | CronQueuePayloadFlushProfile;
 
 export const eventsQueue = new Queue<EventsQueuePayload>('events', {
   connection,

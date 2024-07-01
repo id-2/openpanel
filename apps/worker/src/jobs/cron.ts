@@ -2,7 +2,7 @@ import type { Job } from 'bullmq';
 
 import type { CronQueuePayload } from '@openpanel/queue/src/queues';
 
-import { flush } from './cron.flush';
+import { flush, flushProfiles } from './cron.flush';
 import { salt } from './cron.salt';
 
 export async function cronJob(job: Job<CronQueuePayload>) {
@@ -12,6 +12,9 @@ export async function cronJob(job: Job<CronQueuePayload>) {
     }
     case 'flush': {
       return await flush();
+    }
+    case 'flushProfile': {
+      return await flushProfiles();
     }
   }
 }

@@ -4,7 +4,7 @@ import { toDots } from '@openpanel/common';
 import { redis, redisPub } from '@openpanel/redis';
 import type { Redis } from '@openpanel/redis';
 
-import { ch } from './clickhouse-client';
+import { ch, chQuery } from './clickhouse-client';
 import { transformEvent } from './services/event.service';
 import type { IClickhouseEvent } from './services/event.service';
 import type { IClickhouseProfile } from './services/profile.service';
@@ -205,14 +205,57 @@ export const profileBuffer = new ProfileBuffer({
   batchSize: process.env.BATCH_SIZE ? parseInt(process.env.BATCH_SIZE) : 50,
   async beforeFlush(queue) {
     try {
+      const profiles = await chQuery<IClickhouseProfile>(
+        `SELECT 
+          *
+        FROM profiles
+        WHERE 
+            (id, project_id) IN (${queue.map((item) => `('${item.event.id}', '${item.event.project_id}')`).join(',')})
+        ORDER BY
+            created_at DESC`
+      );
+
       await ch.insert({
         table: 'profiles',
-        values: queue.map((item) => item.event),
+        values: queue.map((item) => {
+          const profile = profiles.find(
+            (p) =>
+              p.id === item.event.id && p.project_id === item.event.project_id
+          );
+
+          return {
+            id: item.event.id,
+            first_name: item.event.first_name ?? profile?.first_name ?? '',
+            last_name: item.event.last_name ?? profile?.last_name ?? '',
+            email: item.event.email ?? profile?.email ?? '',
+            avatar: item.event.avatar ?? profile?.avatar ?? '',
+            properties: toDots({
+              ...(profile?.properties ?? {}),
+              ...(item.event.properties ?? {}),
+            }),
+            project_id: item.event.project_id ?? profile?.project_id ?? '',
+            created_at: new Date(),
+            is_external: item.event.is_external,
+          };
+        }),
+        clickhouse_settings: {
+          date_time_input_format: 'best_effort',
+        },
         format: 'JSONEachRow',
       });
       return queue.map((item) => item.index);
     } catch (e) {
-      console.log('ERROR :D', e);
+      console.log('====== FAILED TO INSERT PROFILES FROM BUFFER ======');
+      console.log(e);
+      console.log('====== JSON ==============================');
+      console.log(JSON.stringify(queue, null, 2));
+      console.log('====== END ===============================');
+
+      try {
+        await redis.rpush('op:buffer:error:events', JSON.stringify(queue));
+      } catch (e) {
+        console.log('>>> Failed to push to error buffer');
+      }
       return [];
     }
   },
