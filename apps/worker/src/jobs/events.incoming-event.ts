@@ -44,7 +44,7 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
     );
   };
   const { ua } = headers;
-  const profileId = body.profileId ?? '';
+  const profileId = body.profileId ? String(body.profileId) : '';
   const createdAt = new Date(body.timestamp);
   const url = getProperty('__path');
   const { path, hash, query, origin } = parsePath(url);
