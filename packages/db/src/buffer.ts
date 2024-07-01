@@ -1,5 +1,6 @@
 import SuperJSON from 'superjson';
 
+import { toDots } from '@openpanel/common';
 import { redis, redisPub } from '@openpanel/redis';
 import type { Redis } from '@openpanel/redis';
 
@@ -312,13 +313,28 @@ export const eventBuffer = new EventBuffer({
     try {
       await ch.insert({
         table: 'events',
-        values: Array.from(itemsToClickhouse).map((item) => item.event),
+        values: Array.from(itemsToClickhouse).map((item) => ({
+          ...item.event,
+          properties: toDots(item.event.properties),
+        })),
         format: 'JSONEachRow',
       });
       return Array.from(itemsToClickhouse).map((item) => item.index);
     } catch (e) {
-      console.log('ERROR :D', e);
+      console.log('====== FAILED TO INSERT FROM BUFFER ======');
+      console.log(e);
+      console.log('====== JSON ==============================');
+      console.log(JSON.stringify(Array.from(itemsToClickhouse), null, 2));
+      console.log('====== END ===============================');
 
+      try {
+        await redis.rpush(
+          'op:buffer:error:events',
+          JSON.stringify(Array.from(itemsToClickhouse))
+        );
+      } catch (e) {
+        console.log('>>> Failed to push to error buffer');
+      }
       return [];
     }
   },

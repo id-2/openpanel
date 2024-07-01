@@ -15,7 +15,8 @@ export function toDots(
 
     return {
       ...acc,
-      [`${path}${key}`]: typeof value === 'string' ? value.trim() : value,
+      [`${path}${key}`]:
+        typeof value === 'string' ? value.trim() : String(value),
     };
   }, {});
 }
