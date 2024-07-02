@@ -13,11 +13,21 @@ import { eventBuffer } from '@openpanel/db/src/buffer';
 import { findJobByPrefix } from '@openpanel/queue';
 import { eventsQueue } from '@openpanel/queue/src/queues';
 import type { EventsQueuePayloadIncomingEvent } from '@openpanel/queue/src/queues';
-import { redis } from '@openpanel/redis';
+import { cacheable, redis } from '@openpanel/redis';
 
 const GLOBAL_PROPERTIES = ['__path', '__referrer'];
 const SESSION_TIMEOUT = 1000 * 60 * 30;
 const SESSION_END_TIMEOUT = SESSION_TIMEOUT + 1000;
+
+const findCachedSessionStartInDb = cacheable(
+  async ({ deviceId, projectId }: { deviceId: string; projectId: string }) => {
+    const res = await getEvents(
+      `SELECT * FROM events WHERE name = 'session_start' AND device_id = ${escape(deviceId)} AND project_id = ${escape(projectId)} ORDER BY created_at DESC LIMIT 1`
+    );
+    return res[0] || null;
+  },
+  1000 * 60 * 5 // 5 minutes
+);
 
 export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
   const {
@@ -133,10 +143,10 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
         item.event.project_id === projectId
     );
   if (!sessionStartEvent) {
-    const res = await getEvents(
-      `SELECT * FROM events WHERE name = 'session_start' AND device_id = ${escape(deviceId)} AND project_id = ${escape(projectId)} ORDER BY created_at DESC LIMIT 1`
-    );
-    sessionStartEvent = res[0] || null;
+    sessionStartEvent = await findCachedSessionStartInDb({
+      deviceId,
+      projectId,
+    });
   }
 
   const payload: Omit<IServiceCreateEventPayload, 'id'> = {
