@@ -61,19 +61,23 @@ abstract class RedisBuffer<T> {
   }
 
   public async flush() {
+    console.log('> Flushing', this.getKey());
     try {
       const data = await this.getQueue(this.batchSize);
+      console.log('> Getting queue', data.length);
       const indexes = await this.beforeFlush(data);
+      console.log('> Getting indexes', indexes);
       await this.trimIndexes(indexes);
       const savedEvents = indexes
         .map((index) => data[index]?.event)
         .filter((event): event is T => event !== null);
       if (this.onCompleted) {
+        console.log('> On completed', savedEvents.length);
         return await this.onCompleted(savedEvents);
       }
       return indexes;
     } catch (e) {
-      console.log('Failed');
+      console.log('> Failed....');
     }
   }
 
@@ -263,7 +267,7 @@ export const profileBuffer = new ProfileBuffer({
       console.log('====== END ===============================');
 
       try {
-        await redis.rpush('op:buffer:error:events', JSON.stringify(queue));
+        await redis.rpush('op:buffer:error:profiles', JSON.stringify(queue));
       } catch (e) {
         console.log('>>> Failed to push to error buffer');
       }
