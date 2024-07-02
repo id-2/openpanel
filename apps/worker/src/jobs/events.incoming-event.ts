@@ -9,6 +9,7 @@ import { v4 as uuid } from 'uuid';
 import { getTime, toISOString } from '@openpanel/common';
 import type { IServiceCreateEventPayload } from '@openpanel/db';
 import { createEvent, getEvents } from '@openpanel/db';
+import { eventBuffer } from '@openpanel/db/src/buffer';
 import { findJobByPrefix } from '@openpanel/queue';
 import { eventsQueue } from '@openpanel/queue/src/queues';
 import type { EventsQueuePayloadIncomingEvent } from '@openpanel/queue/src/queues';
@@ -124,9 +125,19 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
     sessionEnd.job.changeDelay(diff + SESSION_END_TIMEOUT);
   }
 
-  const [sessionStartEvent] = await getEvents(
-    `SELECT * FROM events WHERE name = 'session_start' AND device_id = ${escape(deviceId)} AND project_id = ${escape(projectId)} ORDER BY created_at DESC LIMIT 1`
-  );
+  let sessionStartEvent: IServiceCreateEventPayload | null =
+    await eventBuffer.find(
+      (item) =>
+        item.event.name === 'session_start' &&
+        item.event.device_id === deviceId &&
+        item.event.project_id === projectId
+    );
+  if (!sessionStartEvent) {
+    const res = await getEvents(
+      `SELECT * FROM events WHERE name = 'session_start' AND device_id = ${escape(deviceId)} AND project_id = ${escape(projectId)} ORDER BY created_at DESC LIMIT 1`
+    );
+    sessionStartEvent = res[0] || null;
+  }
 
   const payload: Omit<IServiceCreateEventPayload, 'id'> = {
     name: body.name,
