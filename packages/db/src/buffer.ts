@@ -204,20 +204,31 @@ export const profileBuffer = new ProfileBuffer({
   redis: redis,
   batchSize: process.env.BATCH_SIZE ? parseInt(process.env.BATCH_SIZE) : 50,
   async beforeFlush(queue) {
+    const itemsToClickhouse = new Map<string, QueueItem<IClickhouseProfile>>();
+
+    // Sort by last event first
+    queue.sort((a, b) => b.index - a.index);
+
+    queue.forEach((item) => {
+      itemsToClickhouse.set(item.event.project_id + item.event.id, item);
+    });
+
+    const cleanedQueue = Array.from(itemsToClickhouse.values());
+
     try {
       const profiles = await chQuery<IClickhouseProfile>(
         `SELECT 
           *
         FROM profiles
         WHERE 
-            (id, project_id) IN (${queue.map((item) => `('${item.event.id}', '${item.event.project_id}')`).join(',')})
+            (id, project_id) IN (${cleanedQueue.map((item) => `('${item.event.id}', '${item.event.project_id}')`).join(',')})
         ORDER BY
             created_at DESC`
       );
 
       await ch.insert({
         table: 'profiles',
-        values: queue.map((item) => {
+        values: cleanedQueue.map((item) => {
           const profile = profiles.find(
             (p) =>
               p.id === item.event.id && p.project_id === item.event.project_id
