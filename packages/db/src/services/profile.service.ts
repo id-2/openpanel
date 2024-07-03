@@ -3,7 +3,7 @@ import { escape } from 'sqlstring';
 import { toObject } from '@openpanel/common';
 import type { IChartEventFilter } from '@openpanel/validation';
 
-import { profileBuffer } from '../buffer';
+import { profileBuffer } from '../buffers';
 import { chQuery, formatClickhouseDate } from '../clickhouse-client';
 import { createSqlBuilder } from '../sql-builder';
 

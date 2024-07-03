@@ -1,13 +1,12 @@
 import { omit, uniq } from 'ramda';
 import { escape } from 'sqlstring';
-import superjson from 'superjson';
 import { v4 as uuid } from 'uuid';
 
 import { toDots } from '@openpanel/common';
-import { redis, redisPub } from '@openpanel/redis';
+import { redis } from '@openpanel/redis';
 import type { IChartEventFilter } from '@openpanel/validation';
 
-import { eventBuffer } from '../buffer';
+import { eventBuffer } from '../buffers';
 import {
   ch,
   chQuery,
@@ -18,7 +17,7 @@ import type { EventMeta, Prisma } from '../prisma-client';
 import { db } from '../prisma-client';
 import { createSqlBuilder } from '../sql-builder';
 import { getEventFiltersWhereClause } from './chart.service';
-import { getProfileById, getProfiles, upsertProfile } from './profile.service';
+import { getProfiles, upsertProfile } from './profile.service';
 import type { IServiceProfile } from './profile.service';
 
 export interface IClickhouseEvent {

@@ -8,8 +8,7 @@ import { v4 as uuid } from 'uuid';
 
 import { getTime, toISOString } from '@openpanel/common';
 import type { IServiceCreateEventPayload } from '@openpanel/db';
-import { createEvent, getEvents } from '@openpanel/db';
-import { eventBuffer } from '@openpanel/db/src/buffer';
+import { createEvent, eventBuffer, getEvents } from '@openpanel/db';
 import { findJobByPrefix } from '@openpanel/queue';
 import { eventsQueue } from '@openpanel/queue/src/queues';
 import type { EventsQueuePayloadIncomingEvent } from '@openpanel/queue/src/queues';

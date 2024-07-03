@@ -1,8 +1,7 @@
 import type { Job } from 'bullmq';
 
 import { getTime } from '@openpanel/common';
-import { createEvent, getEvents } from '@openpanel/db';
-import { eventBuffer } from '@openpanel/db/src/buffer';
+import { createEvent, eventBuffer, getEvents } from '@openpanel/db';
 import type { EventsQueuePayloadCreateSessionEnd } from '@openpanel/queue/src/queues';
 
 export async function createSessionEnd(

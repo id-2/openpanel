@@ -37,10 +37,6 @@ async function start() {
     console.log(`For the UI, open http://localhost:${PORT}/`);
   });
 
-  const repeatableJobs = await cronQueue.getRepeatableJobs();
-
-  console.log(repeatableJobs);
-
   await cronQueue.add(
     'salt',
     {
@@ -59,11 +55,11 @@ async function start() {
   await cronQueue.add(
     'flush',
     {
-      type: 'flush',
+      type: 'flushEvents',
       payload: undefined,
     },
     {
-      jobId: 'flush',
+      jobId: 'flushEvents',
       repeat: {
         every: process.env.BATCH_INTERVAL
           ? parseInt(process.env.BATCH_INTERVAL, 10)
@@ -71,14 +67,15 @@ async function start() {
       },
     }
   );
+
   await cronQueue.add(
     'flush',
     {
-      type: 'flushProfile',
+      type: 'flushProfiles',
       payload: undefined,
     },
     {
-      jobId: 'flushProfile',
+      jobId: 'flushProfiles',
       repeat: {
         every: process.env.BATCH_INTERVAL
           ? parseInt(process.env.BATCH_INTERVAL, 10)
@@ -86,6 +83,11 @@ async function start() {
       },
     }
   );
+
+  const repeatableJobs = await cronQueue.getRepeatableJobs();
+
+  console.log('Repeatable jobs:');
+  console.log(repeatableJobs);
 }
 
 start();
