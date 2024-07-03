@@ -8,8 +8,6 @@ import type { Find, OnCompleted, ProcessQueue, QueueItem } from './buffer';
 import { RedisBuffer } from './buffer';
 
 export class ProfileBuffer extends RedisBuffer<IClickhouseProfile> {
-  public table = 'profiles';
-
   constructor() {
     super({
       redis,

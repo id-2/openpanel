@@ -8,8 +8,8 @@ export type QueueItem<T> = {
 };
 
 export type OnCompleted<T> =
-  | ((data: T[]) => Promise<unknown>)
-  | ((data: T[]) => unknown);
+  | ((data: T[]) => Promise<unknown[]>)
+  | ((data: T[]) => unknown[]);
 
 export type ProcessQueue<T> = (data: QueueItem<T>[]) => Promise<number[]>;
 
@@ -59,9 +59,16 @@ export abstract class RedisBuffer<T> {
           .map((index) => data[index]?.event)
           .filter((event): event is T => event !== null);
         if (this.onCompleted) {
-          return await this.onCompleted(savedEvents);
+          const res = await this.onCompleted(savedEvents);
+          return {
+            count: res.length,
+            data: res,
+          };
         }
-        return indexes;
+        return {
+          count: indexes.length,
+          data: indexes,
+        };
       } catch (e) {
         console.log(
           `[${this.getKey()}] Failed to processQueue while flushing:`,
