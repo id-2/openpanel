@@ -13,9 +13,9 @@ export type OnCompleted<T> =
 
 export type ProcessQueue<T> = (data: QueueItem<T>[]) => Promise<number[]>;
 
-export type Find<T> = (
+export type Find<T, R = unknown> = (
   callback: (item: QueueItem<T>) => boolean
-) => Promise<unknown>;
+) => Promise<R | null>;
 
 export abstract class RedisBuffer<T> {
   // constructor
@@ -27,8 +27,8 @@ export abstract class RedisBuffer<T> {
   // abstract methods
   public abstract onCompleted?: OnCompleted<T>;
   public abstract processQueue: ProcessQueue<T>;
-  public abstract find: Find<T>;
-  public abstract findMany: Find<T>;
+  public abstract find: Find<T, unknown>;
+  public abstract findMany: Find<T, unknown>;
 
   constructor(options: { table: string; redis: Redis; batchSize?: number }) {
     this.table = options.table;

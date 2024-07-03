@@ -2,7 +2,10 @@ import { toDots } from '@openpanel/common';
 import { redis } from '@openpanel/redis';
 
 import { ch, chQuery } from '../clickhouse-client';
-import type { IClickhouseProfile } from '../services/profile.service';
+import type {
+  IClickhouseProfile,
+  IServiceProfile,
+} from '../services/profile.service';
 import { transformProfile } from '../services/profile.service';
 import type { Find, OnCompleted, ProcessQueue, QueueItem } from './buffer';
 import { RedisBuffer } from './buffer';
@@ -71,7 +74,9 @@ export class ProfileBuffer extends RedisBuffer<IClickhouseProfile> {
     return queue.map((item) => item.index);
   };
 
-  public findMany: Find<IClickhouseProfile> = async (callback) => {
+  public findMany: Find<IClickhouseProfile, IServiceProfile[]> = async (
+    callback
+  ) => {
     return this.getQueue(-1)
       .then((queue) => {
         return queue
@@ -83,7 +88,7 @@ export class ProfileBuffer extends RedisBuffer<IClickhouseProfile> {
       });
   };
 
-  public find: Find<IClickhouseProfile> = async (callback) => {
+  public find: Find<IClickhouseProfile, IServiceProfile> = async (callback) => {
     return this.getQueue(-1)
       .then((queue) => {
         const match = queue.find(callback);

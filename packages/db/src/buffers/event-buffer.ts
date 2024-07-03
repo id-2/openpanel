@@ -5,7 +5,10 @@ import { redis, redisPub } from '@openpanel/redis';
 
 import { ch } from '../clickhouse-client';
 import { transformEvent } from '../services/event.service';
-import type { IClickhouseEvent } from '../services/event.service';
+import type {
+  IClickhouseEvent,
+  IServiceCreateEventPayload,
+} from '../services/event.service';
 import type { Find, OnCompleted, ProcessQueue, QueueItem } from './buffer';
 import { RedisBuffer } from './buffer';
 
@@ -121,17 +124,22 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
     return Array.from(itemsToClickhouse).map((item) => item.index);
   };
 
-  public findMany: Find<IClickhouseEvent> = async (callback) => {
-    return this.getQueue(-1)
-      .then((queue) => {
-        return queue.filter(callback).map((item) => transformEvent(item.event));
-      })
-      .catch(() => {
-        return [];
-      });
-  };
+  public findMany: Find<IClickhouseEvent, IServiceCreateEventPayload[]> =
+    async (callback) => {
+      return this.getQueue(-1)
+        .then((queue) => {
+          return queue
+            .filter(callback)
+            .map((item) => transformEvent(item.event));
+        })
+        .catch(() => {
+          return [];
+        });
+    };
 
-  public find: Find<IClickhouseEvent> = async (callback) => {
+  public find: Find<IClickhouseEvent, IServiceCreateEventPayload> = async (
+    callback
+  ) => {
     return this.getQueue(-1)
       .then((queue) => {
         const match = queue.find(callback);
