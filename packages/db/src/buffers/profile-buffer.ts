@@ -14,7 +14,7 @@ export class ProfileBuffer extends RedisBuffer<IClickhouseProfile> {
     super({
       redis,
       table: 'profiles',
-      batchSize: 500,
+      batchSize: 100,
     });
   }
 
