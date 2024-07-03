@@ -6,48 +6,35 @@ import { redis, redisPub } from '@openpanel/redis';
 import { ch } from '../clickhouse-client';
 import { transformEvent } from '../services/event.service';
 import type { IClickhouseEvent } from '../services/event.service';
-import type { QueueItem } from './buffer';
+import type { Find, OnCompleted, ProcessQueue, QueueItem } from './buffer';
 import { RedisBuffer } from './buffer';
 
 export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
-  public table = 'events';
-
   constructor() {
     super({
+      table: 'events',
       redis,
-      async onCompleted(savedEvents) {
-        const multi = redis.multi();
-        for (const event of savedEvents) {
-          redisPub.publish('event', SuperJSON.stringify(transformEvent(event)));
-          multi.setex(
-            `live:event:${event.project_id}:${event.profile_id}`,
-            '',
-            60 * 5
-          );
-        }
-        await multi.exec();
-
-        return savedEvents.map((event) => event.id);
-      },
     });
   }
 
-  // For events we always need to keep the latest event in the buffer
-  // So batch size needs to be atleast double the amount of sessionEnds we have in redis (bullmq)
-  public async batchSize() {
-    try {
-      const sessionEnds = await redis.keys('bull:events:sessionEnd:*');
-      return sessionEnds.filter((key) => !key.endsWith(':logs')).length * 3;
-    } catch (e) {
-      return process.env.BATCH_SIZE
-        ? parseInt(process.env.BATCH_SIZE, 10)
-        : 10000;
+  public onCompleted?: OnCompleted<IClickhouseEvent> | undefined = async (
+    savedEvents
+  ) => {
+    const multi = redis.multi();
+    for (const event of savedEvents) {
+      redisPub.publish('event', SuperJSON.stringify(transformEvent(event)));
+      multi.setex(
+        `live:event:${event.project_id}:${event.profile_id}`,
+        '',
+        60 * 5
+      );
     }
-  }
+    await multi.exec();
 
-  public async processQueue(
-    queue: Parameters<RedisBuffer<IClickhouseEvent>['processQueue']>[0]
-  ) {
+    return savedEvents.map((event) => event.id);
+  };
+
+  public processQueue: ProcessQueue<IClickhouseEvent> = async (queue) => {
     const itemsToClickhouse = new Set<QueueItem<IClickhouseEvent>>();
 
     // Sort data by created_at
@@ -132,11 +119,9 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
     });
 
     return Array.from(itemsToClickhouse).map((item) => item.index);
-  }
+  };
 
-  public async findMany(
-    callback: Parameters<RedisBuffer<IClickhouseEvent>['findMany']>[0]
-  ) {
+  public findMany: Find<IClickhouseEvent> = async (callback) => {
     return this.getQueue(-1)
       .then((queue) => {
         return queue.filter(callback).map((item) => transformEvent(item.event));
@@ -144,11 +129,9 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
       .catch(() => {
         return [];
       });
-  }
+  };
 
-  public async find(
-    callback: Parameters<RedisBuffer<IClickhouseEvent>['find']>[0]
-  ) {
+  public find: Find<IClickhouseEvent> = async (callback) => {
     return this.getQueue(-1)
       .then((queue) => {
         const match = queue.find(callback);
@@ -157,5 +140,5 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
       .catch(() => {
         return null;
       });
-  }
+  };
 }

@@ -4,7 +4,7 @@ import { redis } from '@openpanel/redis';
 import { ch, chQuery } from '../clickhouse-client';
 import type { IClickhouseProfile } from '../services/profile.service';
 import { transformProfile } from '../services/profile.service';
-import type { QueueItem } from './buffer';
+import type { Find, OnCompleted, ProcessQueue, QueueItem } from './buffer';
 import { RedisBuffer } from './buffer';
 
 export class ProfileBuffer extends RedisBuffer<IClickhouseProfile> {
@@ -13,16 +13,14 @@ export class ProfileBuffer extends RedisBuffer<IClickhouseProfile> {
   constructor() {
     super({
       redis,
+      table: 'profiles',
+      batchSize: 500,
     });
   }
 
-  public batchSize() {
-    return 500;
-  }
+  public onCompleted?: OnCompleted<IClickhouseProfile> | undefined;
 
-  public async processQueue(
-    queue: Parameters<RedisBuffer<IClickhouseProfile>['processQueue']>[0]
-  ) {
+  public processQueue: ProcessQueue<IClickhouseProfile> = async (queue) => {
     const itemsToClickhouse = new Map<string, QueueItem<IClickhouseProfile>>();
 
     // Sort by last event first
@@ -73,11 +71,9 @@ export class ProfileBuffer extends RedisBuffer<IClickhouseProfile> {
       format: 'JSONEachRow',
     });
     return queue.map((item) => item.index);
-  }
+  };
 
-  public async findMany(
-    callback: (item: QueueItem<IClickhouseProfile>) => boolean
-  ) {
+  public findMany: Find<IClickhouseProfile> = async (callback) => {
     return this.getQueue(-1)
       .then((queue) => {
         return queue
@@ -87,11 +83,9 @@ export class ProfileBuffer extends RedisBuffer<IClickhouseProfile> {
       .catch(() => {
         return [];
       });
-  }
+  };
 
-  public async find(
-    callback: (item: QueueItem<IClickhouseProfile>) => boolean
-  ) {
+  public find: Find<IClickhouseProfile> = async (callback) => {
     return this.getQueue(-1)
       .then((queue) => {
         const match = queue.find(callback);
@@ -100,5 +94,5 @@ export class ProfileBuffer extends RedisBuffer<IClickhouseProfile> {
       .catch(() => {
         return null;
       });
-  }
+  };
 }

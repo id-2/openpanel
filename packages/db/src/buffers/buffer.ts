@@ -11,30 +11,29 @@ export type OnCompleted<T> =
   | ((data: T[]) => Promise<unknown>)
   | ((data: T[]) => unknown);
 
+export type ProcessQueue<T> = (data: QueueItem<T>[]) => Promise<number[]>;
+
+export type Find<T> = (
+  callback: (item: QueueItem<T>) => boolean
+) => Promise<unknown>;
+
 export abstract class RedisBuffer<T> {
-  private prefix = 'op:buffer';
-  private onCompleted?: OnCompleted<T>;
-
+  // constructor
+  public prefix = 'op:buffer';
+  public table: string;
+  public batchSize?: number;
   public redis: Redis;
-  public abstract table: string;
-  public abstract batchSize(): number | Promise<number>;
-  public abstract processQueue(data: QueueItem<T>[]): Promise<number[]>;
-  public abstract find(
-    callback: (item: QueueItem<T>) => boolean
-  ): Promise<unknown>;
-  public abstract findMany(
-    callback: (item: QueueItem<T>) => boolean
-  ): Promise<unknown[]>;
 
-  constructor({
-    redis,
-    onCompleted,
-  }: {
-    redis: Redis;
-    onCompleted?: OnCompleted<T>;
-  }) {
-    this.redis = redis;
-    this.onCompleted = onCompleted;
+  // abstract methods
+  public abstract onCompleted?: OnCompleted<T>;
+  public abstract processQueue: ProcessQueue<T>;
+  public abstract find: Find<T>;
+  public abstract findMany: Find<T>;
+
+  constructor(options: { table: string; redis: Redis; batchSize?: number }) {
+    this.table = options.table;
+    this.redis = options.redis;
+    this.batchSize = options.batchSize;
   }
 
   public getKey() {
@@ -45,14 +44,14 @@ export abstract class RedisBuffer<T> {
     await this.redis.rpush(this.getKey(), JSON.stringify(value));
 
     const length = await this.redis.llen(this.getKey());
-    if (length >= (await this.batchSize())) {
+    if (this.batchSize && length >= this.batchSize) {
       this.flush();
     }
   }
 
   public async flush() {
     try {
-      const data = await this.getQueue(await this.batchSize());
+      const data = await this.getQueue(this.batchSize || -1);
       try {
         const indexes = await this.processQueue(data);
         await this.trimIndexes(indexes);
