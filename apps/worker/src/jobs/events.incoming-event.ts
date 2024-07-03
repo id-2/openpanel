@@ -25,7 +25,7 @@ const findCachedSessionStartInDb = cacheable(
     );
     return res[0] || null;
   },
-  1000 * 60 * 5 // 5 minutes
+  60 * 5 // 5 minutes
 );
 
 export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
