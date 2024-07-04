@@ -7,7 +7,13 @@ import type {
   IServiceProfile,
 } from '../services/profile.service';
 import { transformProfile } from '../services/profile.service';
-import type { Find, OnCompleted, ProcessQueue, QueueItem } from './buffer';
+import type {
+  Find,
+  FindMany,
+  OnCompleted,
+  ProcessQueue,
+  QueueItem,
+} from './buffer';
 import { RedisBuffer } from './buffer';
 
 export class ProfileBuffer extends RedisBuffer<IClickhouseProfile> {
@@ -74,7 +80,7 @@ export class ProfileBuffer extends RedisBuffer<IClickhouseProfile> {
     return queue.map((item) => item.index);
   };
 
-  public findMany: Find<IClickhouseProfile, IServiceProfile[]> = async (
+  public findMany: FindMany<IClickhouseProfile, IServiceProfile> = async (
     callback
   ) => {
     return this.getQueue(-1)

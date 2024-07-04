@@ -9,7 +9,13 @@ import type {
   IClickhouseEvent,
   IServiceCreateEventPayload,
 } from '../services/event.service';
-import type { Find, OnCompleted, ProcessQueue, QueueItem } from './buffer';
+import type {
+  Find,
+  FindMany,
+  OnCompleted,
+  ProcessQueue,
+  QueueItem,
+} from './buffer';
 import { RedisBuffer } from './buffer';
 
 export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
@@ -124,7 +130,7 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
     return Array.from(itemsToClickhouse).map((item) => item.index);
   };
 
-  public findMany: Find<IClickhouseEvent, IServiceCreateEventPayload[]> =
+  public findMany: FindMany<IClickhouseEvent, IServiceCreateEventPayload> =
     async (callback) => {
       return this.getQueue(-1)
         .then((queue) => {

@@ -17,6 +17,10 @@ export type Find<T, R = unknown> = (
   callback: (item: QueueItem<T>) => boolean
 ) => Promise<R | null>;
 
+export type FindMany<T, R = unknown> = (
+  callback: (item: QueueItem<T>) => boolean
+) => Promise<R[]>;
+
 export abstract class RedisBuffer<T> {
   // constructor
   public prefix = 'op:buffer';
@@ -28,7 +32,7 @@ export abstract class RedisBuffer<T> {
   public abstract onCompleted?: OnCompleted<T>;
   public abstract processQueue: ProcessQueue<T>;
   public abstract find: Find<T, unknown>;
-  public abstract findMany: Find<T, unknown>;
+  public abstract findMany: FindMany<T, unknown>;
 
   constructor(options: { table: string; redis: Redis; batchSize?: number }) {
     this.table = options.table;
@@ -62,7 +66,7 @@ export abstract class RedisBuffer<T> {
 
       try {
         const indexes = await this.processQueue(queue);
-        await this.removeIndexes(indexes);
+        await this.deleteIndexes(indexes);
         const data = indexes
           .map((index) => queue[index]?.event)
           .filter((event): event is T => event !== null);
@@ -96,7 +100,7 @@ export abstract class RedisBuffer<T> {
     }
   }
 
-  private async removeIndexes(indexes: number[]) {
+  private async deleteIndexes(indexes: number[]) {
     const multi = this.redis.multi();
     indexes.forEach((index) => {
       multi.lset(this.getKey(), index, DELETE);
