@@ -1,3 +1,4 @@
+import { groupBy } from 'ramda';
 import SuperJSON from 'superjson';
 
 import { deepMergeObjects } from '@openpanel/common';
@@ -63,62 +64,45 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
     queue
       .filter((item) => item.event.name !== 'screen_view')
       .forEach((item) => {
-        // If its a server event and we have a previous event with data we merge the data
-        // This will give us more information from the server event
-        if (item.event.profile_id && item.event.device === 'server') {
-          const lastEventWithData = queue
-            .slice(0, item.index)
-            .findLast(
-              (event) =>
-                event.event.profile_id === item.event.profile_id &&
-                item.event.path !== ''
+        // Find the last event with data and merge it with the current event
+        // We use profile_id here since this property can be set from backend as well
+        const lastEventWithData = queue
+          .slice(0, item.index)
+          .findLast((lastEvent) => {
+            return (
+              lastEvent.event.project_id === item.event.project_id &&
+              lastEvent.event.profile_id === item.event.profile_id &&
+              lastEvent.event.path !== ''
             );
+          });
 
-          if (lastEventWithData) {
-            const event = deepMergeObjects<IClickhouseEvent>(
-              lastEventWithData?.event || {},
-              item.event
-            );
+        const event = deepMergeObjects<IClickhouseEvent>(
+          lastEventWithData?.event || {},
+          item.event
+        );
 
-            event.properties.__properties_from = lastEventWithData.event.id;
-
-            return itemsToClickhouse.add({
-              ...item,
-              event,
-            });
-          }
+        if (lastEventWithData) {
+          event.properties.__properties_from = lastEventWithData.event.id;
         }
 
-        itemsToClickhouse.add(item);
+        return itemsToClickhouse.add({
+          ...item,
+          event,
+        });
       });
 
     // Group screen_view events by session_id
-    const grouped = queue
-      .filter((item) => item.event.name === 'screen_view')
-      .reduce(
-        (acc, item) => {
-          if (!item.event.session_id) {
-            return acc;
-          }
-
-          const exists = acc[item.event.session_id];
-          if (exists) {
-            return {
-              ...acc,
-              [item.event.session_id]: [...exists, item],
-            };
-          }
-
-          return {
-            ...acc,
-            [item.event.session_id]: [item],
-          };
-        },
-        {} as Record<string, { event: IClickhouseEvent; index: number }[]>
-      );
+    const grouped = groupBy(
+      (item) => item.event.session_id,
+      queue.filter((item) => item.event.name === 'screen_view')
+    );
 
     // Iterate over each group
     for (const [sessionId, screenViews] of Object.entries(grouped)) {
+      if (sessionId === '' || !sessionId) {
+        continue;
+      }
+
       // If there is only one screen_view event we can send it back to redis since we can't calculate the duration
       const hasSessionEnd = queue.find(
         (item) =>
@@ -127,7 +111,7 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
       );
 
       screenViews
-        .slice()
+        ?.slice()
         .sort(sortOldestFirst)
         .forEach((item, index) => {
           const nextScreenView = screenViews[index + 1];
