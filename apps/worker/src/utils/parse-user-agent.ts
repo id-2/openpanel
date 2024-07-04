@@ -1,11 +1,17 @@
 import { UAParser } from 'ua-parser-js';
 
-export function isUserAgentSet(ua: string) {
-  return ua !== 'node' && ua !== 'undici' && !!ua;
-}
+const parsedServerUa = {
+  isServer: true,
+  device: 'server',
+} as const;
 
-export function parseUserAgent(ua: string) {
+export function parseUserAgent(ua?: string | null) {
+  if (!ua) return parsedServerUa;
   const res = new UAParser(ua).getResult();
+  const isServer = !res.os.name;
+
+  if (isServer) return parsedServerUa;
+
   return {
     os: res.os.name,
     osVersion: res.os.version,
@@ -14,7 +20,8 @@ export function parseUserAgent(ua: string) {
     device: res.device.type ?? getDevice(ua),
     brand: res.device.vendor,
     model: res.device.model,
-  };
+    isServer: false,
+  } as const;
 }
 
 export function getDevice(ua: string) {

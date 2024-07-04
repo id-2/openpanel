@@ -1,5 +1,5 @@
 import { getReferrerWithQuery, parseReferrer } from '@/utils/parse-referrer';
-import { isUserAgentSet, parseUserAgent } from '@/utils/parse-user-agent';
+import { parseUserAgent } from '@/utils/parse-user-agent';
 import { isSameDomain, parsePath } from '@/utils/url';
 import type { Job } from 'bullmq';
 import { omit } from 'ramda';
@@ -58,10 +58,9 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
     ? null
     : parseReferrer(getProperty('__referrer'));
   const utmReferrer = getReferrerWithQuery(query);
-  const uaInfo = ua ? parseUserAgent(ua) : null;
-  const isServerEvent = ua ? !isUserAgentSet(ua) : true;
+  const uaInfo = parseUserAgent(ua);
 
-  if (isServerEvent) {
+  if (uaInfo.isServer) {
     const [event] = await getEvents(
       `SELECT * FROM events WHERE name = 'screen_view' AND profile_id = ${escape(profileId)} AND project_id = ${escape(projectId)} ORDER BY created_at DESC LIMIT 1`
     );
