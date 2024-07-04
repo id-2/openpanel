@@ -8,25 +8,26 @@ import { v4 as uuid } from 'uuid';
 
 import { getTime, toISOString } from '@openpanel/common';
 import type { IServiceCreateEventPayload } from '@openpanel/db';
-import { createEvent, eventBuffer, getEvents } from '@openpanel/db';
+import { createEvent, getEvents } from '@openpanel/db';
 import { findJobByPrefix } from '@openpanel/queue';
 import { eventsQueue } from '@openpanel/queue/src/queues';
-import type { EventsQueuePayloadIncomingEvent } from '@openpanel/queue/src/queues';
-import { cacheable, redis } from '@openpanel/redis';
+import type {
+  EventsQueuePayloadCreateSessionEnd,
+  EventsQueuePayloadIncomingEvent,
+} from '@openpanel/queue/src/queues';
+import { redis } from '@openpanel/redis';
+
+function noDateInFuture(eventDate: Date): Date {
+  if (eventDate > new Date()) {
+    return new Date();
+  } else {
+    return eventDate;
+  }
+}
 
 const GLOBAL_PROPERTIES = ['__path', '__referrer'];
 const SESSION_TIMEOUT = 1000 * 60 * 30;
 const SESSION_END_TIMEOUT = SESSION_TIMEOUT + 1000;
-
-const findCachedSessionStartInDb = cacheable(
-  async ({ deviceId, projectId }: { deviceId: string; projectId: string }) => {
-    const res = await getEvents(
-      `SELECT * FROM events WHERE name = 'session_start' AND device_id = ${escape(deviceId)} AND project_id = ${escape(projectId)} ORDER BY created_at DESC LIMIT 1`
-    );
-    return res[0] || null;
-  },
-  60 * 5 // 5 minutes
-);
 
 export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
   const {
@@ -36,12 +37,7 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
     projectId,
     currentDeviceId,
     previousDeviceId,
-    // TODO: Remove after 2024-09-26
-    currentDeviceIdDeprecated,
-    previousDeviceIdDeprecated,
   } = job.data.payload;
-  let deviceId: string | null = null;
-
   const properties = body.properties ?? {};
   const getProperty = (name: string): string | undefined => {
     // replace thing is just for older sdks when we didn't have `__`
@@ -55,7 +51,7 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
   };
   const { ua } = headers;
   const profileId = body.profileId ? String(body.profileId) : '';
-  const createdAt = new Date(body.timestamp);
+  const createdAt = noDateInFuture(new Date(body.timestamp));
   const url = getProperty('__path');
   const { path, hash, query, origin } = parsePath(url);
   const referrer = isSameDomain(getProperty('__referrer'), url)
@@ -107,53 +103,43 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
     projectId,
     currentDeviceId,
     previousDeviceId,
-    currentDeviceIdDeprecated,
-    previousDeviceIdDeprecated,
   });
 
-  const createSessionStart = sessionEnd === null;
+  const sessionEndPayload = (sessionEnd?.job?.data
+    ?.payload as EventsQueuePayloadCreateSessionEnd['payload']) || {
+    sessionId: uuid(),
+    deviceId: currentDeviceId,
+    profileId,
+  };
 
-  if (createSessionStart) {
-    deviceId = currentDeviceId;
+  if (sessionEnd) {
+    // If for some reason we have a session end job that is not a createSessionEnd job
+    if (sessionEnd.job.data.type !== 'createSessionEnd') {
+      throw new Error('Invalid session end job');
+    }
+
+    const diff = Date.now() - sessionEnd.job.timestamp;
+    sessionEnd.job.changeDelay(diff + SESSION_END_TIMEOUT);
+  } else {
     eventsQueue.add(
       'event',
       {
         type: 'createSessionEnd',
-        payload: {
-          deviceId,
-        },
+        payload: sessionEndPayload,
       },
       {
         delay: SESSION_END_TIMEOUT,
-        jobId: `sessionEnd:${projectId}:${deviceId}:${Date.now()}`,
+        jobId: `sessionEnd:${projectId}:${sessionEndPayload.deviceId}:${Date.now()}`,
       }
     );
-  } else {
-    deviceId = sessionEnd.deviceId;
-    const diff = Date.now() - sessionEnd.job.timestamp;
-    sessionEnd.job.changeDelay(diff + SESSION_END_TIMEOUT);
-  }
-
-  let sessionStartEvent: IServiceCreateEventPayload | null =
-    await eventBuffer.find(
-      (item) =>
-        item.event.name === 'session_start' &&
-        item.event.device_id === deviceId &&
-        item.event.project_id === projectId
-    );
-  if (!sessionStartEvent) {
-    sessionStartEvent = await findCachedSessionStartInDb({
-      deviceId,
-      projectId,
-    });
   }
 
   const payload: Omit<IServiceCreateEventPayload, 'id'> = {
     name: body.name,
-    deviceId,
+    deviceId: sessionEndPayload.deviceId,
+    sessionId: sessionEndPayload.sessionId,
     profileId,
     projectId,
-    sessionId: createSessionStart ? uuid() : sessionStartEvent?.sessionId ?? '',
     properties: Object.assign({}, omit(GLOBAL_PROPERTIES, properties), {
       __hash: hash,
       __query: query,
@@ -173,7 +159,7 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
     model: uaInfo?.model ?? '',
     duration: 0,
     path: path,
-    origin: origin || sessionStartEvent?.origin || '',
+    origin: origin,
     referrer: referrer?.url,
     referrerName: referrer?.name || utmReferrer?.name || '',
     referrerType: referrer?.type || utmReferrer?.type || '',
@@ -181,8 +167,7 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
     meta: undefined,
   };
 
-  if (createSessionStart) {
-    // We do not need to queue session_start
+  if (!sessionEnd) {
     await createEvent({
       ...payload,
       name: 'session_start',
@@ -198,14 +183,10 @@ async function getSessionEnd({
   projectId,
   currentDeviceId,
   previousDeviceId,
-  currentDeviceIdDeprecated,
-  previousDeviceIdDeprecated,
 }: {
   projectId: string;
   currentDeviceId: string;
   previousDeviceId: string;
-  currentDeviceIdDeprecated: string;
-  previousDeviceIdDeprecated: string;
 }) {
   const sessionEndKeys = await redis.keys(
     `bull:events:sessionEnd:${projectId}:*`
@@ -227,31 +208,6 @@ async function getSessionEnd({
   );
   if (sessionEndJobPreviousDeviceId) {
     return { deviceId: previousDeviceId, job: sessionEndJobPreviousDeviceId };
-  }
-
-  // TODO: Remove after 2024-09-26
-  const sessionEndJobCurrentDeviceIdDeprecated = await findJobByPrefix(
-    eventsQueue,
-    sessionEndKeys,
-    `sessionEnd:${projectId}:${currentDeviceIdDeprecated}:`
-  );
-  if (sessionEndJobCurrentDeviceIdDeprecated) {
-    return {
-      deviceId: currentDeviceIdDeprecated,
-      job: sessionEndJobCurrentDeviceIdDeprecated,
-    };
-  }
-
-  const sessionEndJobPreviousDeviceIdDeprecated = await findJobByPrefix(
-    eventsQueue,
-    sessionEndKeys,
-    `sessionEnd:${projectId}:${previousDeviceIdDeprecated}:`
-  );
-  if (sessionEndJobPreviousDeviceIdDeprecated) {
-    return {
-      deviceId: previousDeviceIdDeprecated,
-      job: sessionEndJobPreviousDeviceIdDeprecated,
-    };
   }
 
   // Create session

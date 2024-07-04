@@ -35,19 +35,6 @@ export async function postEvent(
     ip,
     ua,
   });
-  // TODO: Remove after 2024-09-26
-  const currentDeviceIdDeprecated = generateDeviceId({
-    salt: salts.current,
-    origin,
-    ip,
-    ua,
-  });
-  const previousDeviceIdDeprecated = generateDeviceId({
-    salt: salts.previous,
-    origin,
-    ip,
-    ua,
-  });
 
   eventsQueue.add('event', {
     type: 'incomingEvent',
@@ -60,9 +47,6 @@ export async function postEvent(
       geo,
       currentDeviceId,
       previousDeviceId,
-      // TODO: Remove after 2024-09-26
-      currentDeviceIdDeprecated,
-      previousDeviceIdDeprecated,
     },
   });
 

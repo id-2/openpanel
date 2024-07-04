@@ -22,8 +22,6 @@ export interface EventsQueuePayloadIncomingEvent {
     };
     currentDeviceId: string;
     previousDeviceId: string;
-    currentDeviceIdDeprecated: string;
-    previousDeviceIdDeprecated: string;
   };
 }
 export interface EventsQueuePayloadCreateEvent {
@@ -32,7 +30,10 @@ export interface EventsQueuePayloadCreateEvent {
 }
 export interface EventsQueuePayloadCreateSessionEnd {
   type: 'createSessionEnd';
-  payload: Pick<IServiceCreateEventPayload, 'deviceId'>;
+  payload: Pick<
+    IServiceCreateEventPayload,
+    'deviceId' | 'sessionId' | 'profileId'
+  >;
 }
 export type EventsQueuePayload =
   | EventsQueuePayloadCreateEvent
