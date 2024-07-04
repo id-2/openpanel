@@ -51,20 +51,30 @@ export abstract class RedisBuffer<T> {
 
   public async flush() {
     try {
-      const data = await this.getQueue(this.batchSize || -1);
+      const queue = await this.getQueue(this.batchSize || -1);
+
+      if (queue.length === 0) {
+        return {
+          count: 0,
+          data: [],
+        };
+      }
+
       try {
-        const indexes = await this.processQueue(data);
-        await this.trimIndexes(indexes);
-        const savedEvents = indexes
-          .map((index) => data[index]?.event)
+        const indexes = await this.processQueue(queue);
+        await this.removeIndexes(indexes);
+        const data = indexes
+          .map((index) => queue[index]?.event)
           .filter((event): event is T => event !== null);
+
         if (this.onCompleted) {
-          const res = await this.onCompleted(savedEvents);
+          const res = await this.onCompleted(data);
           return {
             count: res.length,
             data: res,
           };
         }
+
         return {
           count: indexes.length,
           data: indexes,
@@ -77,7 +87,7 @@ export abstract class RedisBuffer<T> {
         const timestamp = new Date().getTime();
         await this.redis.hset(`${this.getKey()}:failed:${timestamp}`, {
           error: e instanceof Error ? e.message : 'Unknown error',
-          data: JSON.stringify(data.map((item) => item.event)),
+          data: JSON.stringify(queue.map((item) => item.event)),
           retries: 0,
         });
       }
@@ -86,7 +96,7 @@ export abstract class RedisBuffer<T> {
     }
   }
 
-  private async trimIndexes(indexes: number[]) {
+  private async removeIndexes(indexes: number[]) {
     const multi = this.redis.multi();
     indexes.forEach((index) => {
       multi.lset(this.getKey(), index, DELETE);
