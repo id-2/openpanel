@@ -18,6 +18,13 @@ import type {
 } from './buffer';
 import { RedisBuffer } from './buffer';
 
+const sortOldestFirst = (
+  a: QueueItem<IClickhouseEvent>,
+  b: QueueItem<IClickhouseEvent>
+) =>
+  new Date(a.event.created_at).getTime() -
+  new Date(b.event.created_at).getTime();
+
 export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
   constructor() {
     super({
@@ -48,11 +55,7 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
 
     // Sort data by created_at
     // oldest first
-    queue.sort(
-      (a, b) =>
-        new Date(a.event.created_at).getTime() -
-        new Date(b.event.created_at).getTime()
-    );
+    queue.sort(sortOldestFirst);
 
     // All events thats not a screen_view can be sent to clickhouse
     // We only need screen_views since we want to calculate the duration of each screen
@@ -63,19 +66,25 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
         // If its a server event and we have a previous event with data we merge the data
         // This will give us more information from the server event
         if (item.event.profile_id && item.event.device === 'server') {
-          const lastEventWithData = queue.findLast(
-            (event) =>
-              event.event.profile_id === item.event.profile_id &&
-              item.event.path !== ''
-          );
+          const lastEventWithData = queue
+            .slice(0, item.index)
+            .findLast(
+              (event) =>
+                event.event.profile_id === item.event.profile_id &&
+                item.event.path !== ''
+            );
 
           if (lastEventWithData) {
+            const event = deepMergeObjects<IClickhouseEvent>(
+              lastEventWithData?.event || {},
+              item.event
+            );
+
+            event.properties.__properties_from = lastEventWithData.event.id;
+
             return itemsToClickhouse.add({
               ...item,
-              event: deepMergeObjects<IClickhouseEvent>(
-                lastEventWithData?.event || {},
-                item.event
-              ),
+              event,
             });
           }
         }
@@ -96,11 +105,7 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
           if (exists) {
             return {
               ...acc,
-              [item.event.session_id]: [...exists, item].sort(
-                (a, b) =>
-                  new Date(a.event.created_at).getTime() -
-                  new Date(b.event.created_at).getTime()
-              ),
+              [item.event.session_id]: [...exists, item],
             };
           }
 
@@ -121,25 +126,30 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
           item.event.session_id === sessionId
       );
 
-      screenViews.forEach((item, index) => {
-        const nextScreenView = screenViews[index + 1];
-        // if nextScreenView does not exists we can't calculate the duration (last event in session)
-        if (nextScreenView) {
-          const duration =
-            new Date(nextScreenView.event.created_at).getTime() -
-            new Date(item.event.created_at).getTime();
-          itemsToClickhouse.add({
-            ...item,
-            event: {
+      screenViews
+        .slice()
+        .sort(sortOldestFirst)
+        .forEach((item, index) => {
+          const nextScreenView = screenViews[index + 1];
+          // if nextScreenView does not exists we can't calculate the duration (last event in session)
+          if (nextScreenView) {
+            const duration =
+              new Date(nextScreenView.event.created_at).getTime() -
+              new Date(item.event.created_at).getTime();
+            const event = {
               ...item.event,
               duration,
-            },
-          });
-          // push last event in session if we have a session_end event
-        } else if (hasSessionEnd) {
-          itemsToClickhouse.add(item);
-        }
-      });
+            };
+            event.properties.__duration_from = nextScreenView.event.id;
+            itemsToClickhouse.add({
+              ...item,
+              event,
+            });
+            // push last event in session if we have a session_end event
+          } else if (hasSessionEnd) {
+            itemsToClickhouse.add(item);
+          }
+        });
     } // for of end
 
     await ch.insert({
