@@ -84,7 +84,7 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
       osVersion: event?.osVersion ?? '',
       browser: event?.browser ?? '',
       browserVersion: event?.browserVersion ?? '',
-      device: event?.device ?? '',
+      device: event?.device ?? uaInfo.device ?? '',
       brand: event?.brand ?? '',
       model: event?.model ?? '',
       duration: 0,

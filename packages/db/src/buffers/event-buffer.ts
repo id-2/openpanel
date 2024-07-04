@@ -57,45 +57,41 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
     // All events thats not a screen_view can be sent to clickhouse
     // We only need screen_views since we want to calculate the duration of each screen
     // To do this we need a minimum of 2 screen_views
-    queue.forEach((item, index) => {
-      if (item.event.name === 'screen_view') {
-        return;
-      }
+    queue
+      .filter((item) => item.event.name === 'screen_view')
+      .forEach((item) => {
+        // If its a server event and we have a previous event with data we merge the data
+        // This will give us more information from the server event
+        if (item.event.profile_id && item.event.device === 'server') {
+          const lastEventWithData = queue.findLast(
+            (event) =>
+              event.event.profile_id === item.event.profile_id &&
+              item.event.path !== ''
+          );
 
-      // Find the last screen_view before this event
-      const screenView = queue.slice(0, index).findLast((screenView) => {
-        return (
-          screenView.event.name === 'screen_view' &&
-          (screenView.event.session_id === item.event.session_id ||
-            screenView.event.profile_id === item.event.profile_id)
-        );
+          if (lastEventWithData) {
+            return itemsToClickhouse.add({
+              ...item,
+              event: deepMergeObjects<IClickhouseEvent>(
+                lastEventWithData?.event || {},
+                item.event
+              ),
+            });
+          }
+        }
+
+        itemsToClickhouse.add(item);
       });
-
-      if (screenView) {
-        console.log(
-          `Found screenView for ${item.event.name} ${item.event.device_id}`,
-          screenView.event
-        );
-      } else {
-        console.log(
-          `No screenView for ${item.event.name} ${item.event.device_id}`
-        );
-      }
-
-      itemsToClickhouse.add({
-        ...item,
-        event: deepMergeObjects<IClickhouseEvent>(
-          screenView?.event || {},
-          item.event
-        ),
-      });
-    });
 
     // Group screen_view events by session_id
     const grouped = queue
       .filter((item) => item.event.name === 'screen_view')
       .reduce(
         (acc, item) => {
+          if (!item.event.session_id) {
+            return acc;
+          }
+
           const exists = acc[item.event.session_id];
           if (exists) {
             return {
