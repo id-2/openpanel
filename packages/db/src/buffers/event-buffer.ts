@@ -63,10 +63,10 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
       }
 
       // Find the last screen_view before this event
-      const screenView = queue.slice(0, index).findLast((item) => {
+      const screenView = queue.slice(0, index).findLast((screenView) => {
         return (
-          item.event.name === 'screen_view' &&
-          item.event.session_id === item.event.session_id
+          screenView.event.name === 'screen_view' &&
+          screenView.event.session_id === item.event.session_id
         );
       });
 
@@ -83,7 +83,10 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
 
       itemsToClickhouse.add({
         ...item,
-        event: deepMergeObjects<IClickhouseEvent>(screenView || {}, item.event),
+        event: deepMergeObjects<IClickhouseEvent>(
+          screenView?.event || {},
+          item.event
+        ),
       });
     });
 
