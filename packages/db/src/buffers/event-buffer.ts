@@ -58,7 +58,7 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
     // We only need screen_views since we want to calculate the duration of each screen
     // To do this we need a minimum of 2 screen_views
     queue
-      .filter((item) => item.event.name === 'screen_view')
+      .filter((item) => item.event.name !== 'screen_view')
       .forEach((item) => {
         // If its a server event and we have a previous event with data we merge the data
         // This will give us more information from the server event
