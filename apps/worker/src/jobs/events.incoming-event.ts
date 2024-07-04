@@ -61,9 +61,11 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
   const uaInfo = parseUserAgent(ua);
 
   if (uaInfo.isServer) {
-    const [event] = await getEvents(
-      `SELECT * FROM events WHERE name = 'screen_view' AND profile_id = ${escape(profileId)} AND project_id = ${escape(projectId)} ORDER BY created_at DESC LIMIT 1`
-    );
+    const [event] = profileId
+      ? await getEvents(
+          `SELECT * FROM events WHERE name = 'screen_view' AND profile_id = ${escape(profileId)} AND project_id = ${escape(projectId)} ORDER BY created_at DESC LIMIT 1`
+        )
+      : [];
 
     const payload: Omit<IServiceCreateEventPayload, 'id'> = {
       name: body.name,
