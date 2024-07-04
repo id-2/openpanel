@@ -66,7 +66,8 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
       const screenView = queue.slice(0, index).findLast((screenView) => {
         return (
           screenView.event.name === 'screen_view' &&
-          screenView.event.session_id === item.event.session_id
+          (screenView.event.session_id === item.event.session_id ||
+            screenView.event.profile_id === item.event.profile_id)
         );
       });
 
