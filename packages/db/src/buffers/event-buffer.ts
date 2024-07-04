@@ -70,6 +70,17 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
         );
       });
 
+      if (screenView) {
+        console.log(
+          `Found screenView for ${item.event.name} ${item.event.device_id}`,
+          screenView.event
+        );
+      } else {
+        console.log(
+          `No screenView for ${item.event.name} ${item.event.device_id}`
+        );
+      }
+
       itemsToClickhouse.add({
         ...item,
         event: deepMergeObjects<IClickhouseEvent>(screenView || {}, item.event),
