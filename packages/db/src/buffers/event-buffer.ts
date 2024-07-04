@@ -1,6 +1,6 @@
 import SuperJSON from 'superjson';
 
-import { toDots } from '@openpanel/common';
+import { deepMergeObjects } from '@openpanel/common';
 import { redis, redisPub } from '@openpanel/redis';
 
 import { ch } from '../clickhouse-client';
@@ -57,11 +57,24 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
     // All events thats not a screen_view can be sent to clickhouse
     // We only need screen_views since we want to calculate the duration of each screen
     // To do this we need a minimum of 2 screen_views
-    queue
-      .filter((item) => item.event.name !== 'screen_view')
-      .forEach((item) => {
-        itemsToClickhouse.add(item);
+    queue.forEach((item, index) => {
+      if (item.event.name === 'screen_view') {
+        return;
+      }
+
+      // Find the last screen_view before this event
+      const screenView = queue.slice(0, index).findLast((item) => {
+        return (
+          item.event.name === 'screen_view' &&
+          item.event.session_id === item.event.session_id
+        );
       });
+
+      itemsToClickhouse.add({
+        ...item,
+        event: deepMergeObjects<IClickhouseEvent>(screenView || {}, item.event),
+      });
+    });
 
     // Group screen_view events by session_id
     const grouped = queue
@@ -120,10 +133,7 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
 
     await ch.insert({
       table: 'events',
-      values: Array.from(itemsToClickhouse).map((item) => ({
-        ...item.event,
-        properties: toDots(item.event.properties),
-      })),
+      values: Array.from(itemsToClickhouse).map((item) => item.event),
       format: 'JSONEachRow',
     });
 

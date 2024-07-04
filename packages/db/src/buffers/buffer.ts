@@ -100,7 +100,7 @@ export abstract class RedisBuffer<T> {
     }
   }
 
-  private async deleteIndexes(indexes: number[]) {
+  public async deleteIndexes(indexes: number[]) {
     const multi = this.redis.multi();
     indexes.forEach((index) => {
       multi.lset(this.getKey(), index, DELETE);
