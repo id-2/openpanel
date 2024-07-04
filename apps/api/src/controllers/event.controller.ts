@@ -4,6 +4,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { generateDeviceId } from '@openpanel/common';
 import { getSalts } from '@openpanel/db';
 import { eventsQueue } from '@openpanel/queue';
+import { redis } from '@openpanel/redis';
 import type { PostEventPayload } from '@openpanel/sdk';
 
 export async function postEvent(
@@ -16,6 +17,8 @@ export async function postEvent(
   const ua = request.headers['user-agent']!;
   const origin = request.headers.origin!;
   const projectId = request.client?.projectId;
+
+  await redis.lpush('user-agents', JSON.stringify({ origin, ua, projectId }));
 
   if (!projectId) {
     reply.status(400).send('missing origin');
