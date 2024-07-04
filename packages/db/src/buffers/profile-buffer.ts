@@ -1,3 +1,5 @@
+import { mergeDeepRight } from 'ramda';
+
 import { toDots } from '@openpanel/common';
 import { redis } from '@openpanel/redis';
 
@@ -30,11 +32,14 @@ export class ProfileBuffer extends RedisBuffer<IClickhouseProfile> {
   public processQueue: ProcessQueue<IClickhouseProfile> = async (queue) => {
     const itemsToClickhouse = new Map<string, QueueItem<IClickhouseProfile>>();
 
-    // Sort by last event first
-    queue.sort((a, b) => b.index - a.index);
-
+    // Combine all writes to the same profile
     queue.forEach((item) => {
-      itemsToClickhouse.set(item.event.project_id + item.event.id, item);
+      const key = item.event.project_id + item.event.id;
+      const existing = itemsToClickhouse.get(key);
+      itemsToClickhouse.set(
+        item.event.project_id + item.event.id,
+        mergeDeepRight(existing ?? {}, item)
+      );
     });
 
     const cleanedQueue = Array.from(itemsToClickhouse.values());
