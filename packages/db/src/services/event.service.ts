@@ -226,7 +226,7 @@ export async function createEvent(
     payload.profileId = payload.deviceId;
   }
   console.log(
-    `create event ${payload.name} for deviceId: ${payload.deviceId} profileId ${payload.profileId}`
+    `create event ${payload.name} for [deviceId]: ${payload.deviceId} [profileId]: ${payload.profileId} [projectId]: ${payload.projectId} [path]: ${payload.path}`
   );
 
   if (payload.profileId !== '') {
@@ -234,8 +234,6 @@ export async function createEvent(
       id: String(payload.profileId),
       isExternal: payload.profileId !== payload.deviceId,
       projectId: payload.projectId,
-      firstName: '',
-      lastName: '',
       properties: {
         path: payload.path,
         country: payload.country,
