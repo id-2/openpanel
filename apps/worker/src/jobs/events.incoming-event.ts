@@ -37,6 +37,7 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
     projectId,
     currentDeviceId,
     previousDeviceId,
+    priority,
   } = job.data.payload;
   const properties = body.properties ?? {};
   const getProperty = (name: string): string | undefined => {
@@ -49,7 +50,7 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
         | undefined) ?? undefined
     );
   };
-  const { ua } = headers;
+
   const profileId = body.profileId ? String(body.profileId) : '';
   const createdAt = noDateInFuture(new Date(body.timestamp));
   const url = getProperty('__path');
@@ -58,7 +59,7 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
     ? null
     : parseReferrer(getProperty('__referrer'));
   const utmReferrer = getReferrerWithQuery(query);
-  const uaInfo = parseUserAgent(ua);
+  const uaInfo = parseUserAgent(headers.ua);
 
   if (uaInfo.isServer) {
     const [event] = profileId
@@ -100,7 +101,7 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
     return createEvent(payload);
   }
 
-  const sessionEnd = await getSessionEnd({
+  const sessionEnd = await getSessionEndWithPriority(priority)({
     projectId,
     currentDeviceId,
     previousDeviceId,
@@ -178,6 +179,28 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
   }
 
   return createEvent(payload);
+}
+
+function getSessionEndWithPriority(
+  priority: boolean,
+  count = 0
+): typeof getSessionEnd {
+  return async (args) => {
+    const res = await getSessionEnd(args);
+
+    if (count > 5) {
+      throw new Error('Failed to get session end');
+    }
+
+    // if we get simultaneous requests we want to avoid race conditions with getting the session end
+    // one of the events will get priority and the other will wait for the first to finish
+    if (res === null && priority === false) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return getSessionEndWithPriority(priority, count + 1)(args);
+    }
+
+    return res;
+  };
 }
 
 async function getSessionEnd({

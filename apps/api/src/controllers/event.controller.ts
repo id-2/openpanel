@@ -39,6 +39,15 @@ export async function postEvent(
     ua,
   });
 
+  // this will ensure that we don't have multiple events creating sessions
+  const locked = await redis.set(
+    `request:priority:${currentDeviceId}-${previousDeviceId}`,
+    'locked',
+    'EX',
+    10,
+    'NX'
+  );
+
   eventsQueue.add('event', {
     type: 'incomingEvent',
     payload: {
@@ -50,6 +59,7 @@ export async function postEvent(
       geo,
       currentDeviceId,
       previousDeviceId,
+      priority: locked === 'OK',
     },
   });
 

@@ -22,6 +22,7 @@ export interface EventsQueuePayloadIncomingEvent {
     };
     currentDeviceId: string;
     previousDeviceId: string;
+    priority: boolean;
   };
 }
 export interface EventsQueuePayloadCreateEvent {
