@@ -9,18 +9,18 @@ export async function createSessionEnd(
 ) {
   const payload = job.data.payload;
   const eventsInBuffer = await eventBuffer.findMany(
-    (item) => item.event.device_id === payload.deviceId
+    (item) => item.event.session_id === payload.sessionId
   );
 
   const sql = `
   SELECT * FROM events 
   WHERE 
-    device_id = '${payload.deviceId}' 
+    session_id = '${payload.sessionId}' 
     AND created_at >= (
       SELECT created_at 
       FROM events
       WHERE 
-        device_id = '${payload.deviceId}' 
+        session_id = '${payload.sessionId}' 
         AND name = 'session_start'
       ORDER BY created_at DESC
       LIMIT 1
