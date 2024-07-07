@@ -55,7 +55,11 @@ export async function postEvent(
       headers: {
         ua,
       },
-      event: request.body,
+      event: {
+        ...request.body,
+        // Dont rely on the client for the timestamp
+        timestamp: new Date().toISOString(),
+      },
       geo,
       currentDeviceId,
       previousDeviceId,
