@@ -137,13 +137,13 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
         });
     } // for of end
 
-    // Check if we have any events that has been in the queue for more than 1 hour
+    // Check if we have any events that has been in the queue for more than 24 hour
     // This should not theoretically happen but if it does we should move them to stalled
     queue.forEach((item) => {
       if (
         !itemsToClickhouse.has(item) &&
         new Date(item.event.created_at).getTime() <
-          new Date().getTime() - 1000 * 60 * 60
+          new Date().getTime() - 1000 * 60 * 60 * 24
       ) {
         itemsToStalled.add(item);
       }
