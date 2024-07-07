@@ -53,6 +53,7 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
 
   public processQueue: ProcessQueue<IClickhouseEvent> = async (queue) => {
     const itemsToClickhouse = new Set<QueueItem<IClickhouseEvent>>();
+    const itemsToStalled = new Set<QueueItem<IClickhouseEvent>>();
 
     // Sort data by created_at
     // oldest first
@@ -136,13 +137,36 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
         });
     } // for of end
 
+    // Check if we have any events that has been in the queue for more than 1 hour
+    // This should not theoretically happen but if it does we should move them to stalled
+    queue.forEach((item) => {
+      if (
+        !itemsToClickhouse.has(item) &&
+        new Date(item.event.created_at).getTime() <
+          new Date().getTime() - 1000 * 60 * 60
+      ) {
+        itemsToStalled.add(item);
+      }
+    });
+
+    if (itemsToStalled.size > 0) {
+      const multi = redis.multi();
+      for (const item of itemsToStalled) {
+        multi.rpush(this.getKey('stalled'), JSON.stringify(item.event));
+      }
+      await multi.exec();
+    }
+
     await ch.insert({
       table: 'events',
       values: Array.from(itemsToClickhouse).map((item) => item.event),
       format: 'JSONEachRow',
     });
 
-    return Array.from(itemsToClickhouse).map((item) => item.index);
+    return [
+      ...Array.from(itemsToClickhouse).map((item) => item.index),
+      ...Array.from(itemsToStalled).map((item) => item.index),
+    ];
   };
 
   public findMany: FindMany<IClickhouseEvent, IServiceCreateEventPayload> =

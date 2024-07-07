@@ -40,8 +40,12 @@ export abstract class RedisBuffer<T> {
     this.batchSize = options.batchSize;
   }
 
-  public getKey() {
-    return this.prefix + ':' + this.table;
+  public getKey(name?: string) {
+    const key = this.prefix + ':' + this.table;
+    if (name) {
+      return `${key}:${name}`;
+    }
+    return key;
   }
 
   public async insert(value: T) {
@@ -89,7 +93,7 @@ export abstract class RedisBuffer<T> {
           e
         );
         const timestamp = new Date().getTime();
-        await this.redis.hset(`${this.getKey()}:failed:${timestamp}`, {
+        await this.redis.hset(this.getKey(`failed:${timestamp}`), {
           error: e instanceof Error ? e.message : 'Unknown error',
           data: JSON.stringify(queue.map((item) => item.event)),
           retries: 0,
