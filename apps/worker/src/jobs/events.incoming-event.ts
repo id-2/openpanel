@@ -74,7 +74,10 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
       sessionId: event?.sessionId || '',
       profileId,
       projectId,
-      properties: Object.assign({}, omit(GLOBAL_PROPERTIES, properties)),
+      properties: {
+        ...omit(GLOBAL_PROPERTIES, properties),
+        user_agent: headers.ua,
+      },
       createdAt,
       country: event?.country || geo.country || '',
       city: event?.city || geo.city || '',
