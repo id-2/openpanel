@@ -63,7 +63,10 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
     // We only need screen_views since we want to calculate the duration of each screen
     // To do this we need a minimum of 2 screen_views
     queue
-      .filter((item) => item.event.name !== 'screen_view')
+      .filter(
+        (item) =>
+          item.event.name !== 'screen_view' || item.event.device === 'server'
+      )
       .forEach((item) => {
         // Find the last event with data and merge it with the current event
         // We use profile_id here since this property can be set from backend as well
@@ -95,7 +98,10 @@ export class EventBuffer extends RedisBuffer<IClickhouseEvent> {
     // Group screen_view events by session_id
     const grouped = groupBy(
       (item) => item.event.session_id,
-      queue.filter((item) => item.event.name === 'screen_view')
+      queue.filter(
+        (item) =>
+          item.event.name === 'screen_view' && item.event.device !== 'server'
+      )
     );
 
     // Iterate over each group

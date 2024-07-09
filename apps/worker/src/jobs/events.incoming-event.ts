@@ -3,12 +3,12 @@ import { parseUserAgent } from '@/utils/parse-user-agent';
 import { isSameDomain, parsePath } from '@/utils/url';
 import type { Job } from 'bullmq';
 import { omit } from 'ramda';
-import { escape } from 'sqlstring';
 import { v4 as uuid } from 'uuid';
 
 import { getTime, toISOString } from '@openpanel/common';
 import type { IServiceCreateEventPayload } from '@openpanel/db';
-import { createEvent, getEvents } from '@openpanel/db';
+import { createEvent } from '@openpanel/db';
+import { getLastScreenViewFromProfileId } from '@openpanel/db/src/services/event.service';
 import { findJobByPrefix } from '@openpanel/queue';
 import { eventsQueue } from '@openpanel/queue/src/queues';
 import type {
@@ -62,11 +62,10 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
   const uaInfo = parseUserAgent(headers.ua);
 
   if (uaInfo.isServer) {
-    const [event] = profileId
-      ? await getEvents(
-          `SELECT * FROM events WHERE name = 'screen_view' AND profile_id = ${escape(profileId)} AND project_id = ${escape(projectId)} ORDER BY created_at DESC LIMIT 1`
-        )
-      : [];
+    const event = await getLastScreenViewFromProfileId({
+      profileId,
+      projectId,
+    });
 
     const payload: Omit<IServiceCreateEventPayload, 'id'> = {
       name: body.name,

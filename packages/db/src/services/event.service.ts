@@ -430,3 +430,27 @@ export function getConversionEventNames(projectId: string) {
     },
   });
 }
+
+export async function getLastScreenViewFromProfileId({
+  profileId,
+  projectId,
+}: {
+  profileId: string;
+  projectId: string;
+}) {
+  const eventInBuffer = await eventBuffer.find(
+    (item) => item.event.profile_id === profileId
+  );
+
+  if (eventInBuffer) {
+    return eventInBuffer;
+  }
+
+  const [eventInDb] = profileId
+    ? await getEvents(
+        `SELECT * FROM events WHERE name = 'screen_view' AND profile_id = ${escape(profileId)} AND project_id = ${escape(projectId)} AND created_at >= now() - INTERVAL 30 MINUTE ORDER BY created_at DESC LIMIT 1`
+      )
+    : [];
+
+  return eventInDb || null;
+}
