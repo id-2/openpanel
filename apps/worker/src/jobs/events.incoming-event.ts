@@ -134,7 +134,6 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
       {
         delay: SESSION_END_TIMEOUT,
         jobId: `sessionEnd:${projectId}:${sessionEndPayload.deviceId}:${Date.now()}`,
-        priority: 1,
       }
     );
   }
