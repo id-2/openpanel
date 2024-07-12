@@ -15,10 +15,7 @@ export async function postEvent(
 ) {
   const ip = getClientIp(request)!;
   const ua = request.headers['user-agent']!;
-  const origin = request.headers.origin!;
   const projectId = request.client?.projectId;
-
-  await redis.lpush('user-agents', JSON.stringify({ origin, ua, projectId }));
 
   if (!projectId) {
     reply.status(400).send('missing origin');
