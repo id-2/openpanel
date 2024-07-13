@@ -17,7 +17,12 @@ serverAdapter.setBasePath(process.env.SELF_HOSTED ? '/worker' : '/');
 const app = express();
 
 const workerOptions: WorkerOptions = {
-  connection,
+  connection: {
+    ...connection,
+    enableReadyCheck: false,
+    maxRetriesPerRequest: null,
+    enableOfflineQueue: true,
+  },
   concurrency: parseInt(process.env.CONCURRENCY || '1', 10),
 };
 
@@ -37,31 +42,60 @@ async function start() {
     console.log(`For the UI, open http://localhost:${PORT}/`);
   });
 
-  const gracefulShutdown = async (signal: NodeJS.Signals) => {
-    console.log(`Received ${signal}, closing server...`);
-    await eventsWorker.close();
-    await cronWorker.close();
-    // Other asynchronous closings
-    process.exit(0);
-  };
+  function workerLogger(worker: string, type: string, err?: Error) {
+    console.log(`Worker ${worker} -> ${type}`);
+    if (err) {
+      console.error(err);
+    }
+  }
 
-  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-  process.on('uncaughtException', function (err) {
-    // Handle the error safely
-    console.error('--- Uncaught exception ---');
-    console.error(err);
-    console.error('--------------------------');
+  const workers = [eventsWorker, cronWorker];
+  workers.forEach((worker) => {
+    worker.on('error', (err) => {
+      workerLogger(worker.name, 'error', err);
+    });
+
+    worker.on('closed', () => {
+      workerLogger(worker.name, 'closed');
+    });
+
+    worker.on('ready', () => {
+      workerLogger(worker.name, 'ready');
+    });
   });
 
-  process.on('unhandledRejection', (reason, promise) => {
-    // Handle the error safely
-    console.error('--- Uncaught exception ---');
-    console.error(reason);
-    console.error('---');
-    console.error(promise);
-    console.error('--------------------------');
-  });
+  async function exitHandler(evtOrExitCodeOrError: number | string | Error) {
+    try {
+      await eventsWorker.close();
+      await cronWorker.close();
+    } catch (e) {
+      console.error('EXIT HANDLER ERROR', e);
+    }
+
+    process.exit(isNaN(+evtOrExitCodeOrError) ? 1 : +evtOrExitCodeOrError);
+  }
+
+  [
+    'beforeExit',
+    'uncaughtException',
+    'unhandledRejection',
+    'SIGHUP',
+    'SIGINT',
+    'SIGQUIT',
+    'SIGILL',
+    'SIGTRAP',
+    'SIGABRT',
+    'SIGBUS',
+    'SIGFPE',
+    'SIGUSR1',
+    'SIGSEGV',
+    'SIGUSR2',
+    'SIGTERM',
+  ].forEach((evt) =>
+    process.on(evt, (evt) => {
+      exitHandler(evt);
+    })
+  );
 
   await cronQueue.add(
     'salt',
