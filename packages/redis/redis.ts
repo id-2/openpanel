@@ -2,7 +2,8 @@ import type { RedisOptions } from 'ioredis';
 import Redis from 'ioredis';
 
 const options: RedisOptions = {
-  connectTimeout: 10000,
+  connectTimeout: 30000,
+  maxRetriesPerRequest: null,
 };
 
 export { Redis };

@@ -123,7 +123,7 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
     }
 
     const diff = Date.now() - sessionEnd.job.timestamp;
-    sessionEnd.job.changeDelay(diff + SESSION_END_TIMEOUT);
+    await sessionEnd.job.changeDelay(diff + SESSION_END_TIMEOUT);
   } else {
     eventsQueue.add(
       'event',

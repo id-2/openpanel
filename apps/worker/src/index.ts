@@ -22,9 +22,9 @@ const workerOptions: WorkerOptions = {
 };
 
 async function start() {
-  new Worker(eventsQueue.name, eventsJob, workerOptions);
+  const eventsWorker = new Worker(eventsQueue.name, eventsJob, workerOptions);
 
-  new Worker(cronQueue.name, cronJob, workerOptions);
+  const cronWorker = new Worker(cronQueue.name, cronJob, workerOptions);
 
   createBullBoard({
     queues: [new BullMQAdapter(eventsQueue), new BullMQAdapter(cronQueue)],
@@ -35,6 +35,32 @@ async function start() {
 
   app.listen(PORT, () => {
     console.log(`For the UI, open http://localhost:${PORT}/`);
+  });
+
+  const gracefulShutdown = async (signal: NodeJS.Signals) => {
+    console.log(`Received ${signal}, closing server...`);
+    await eventsWorker.close();
+    await cronWorker.close();
+    // Other asynchronous closings
+    process.exit(0);
+  };
+
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('uncaughtException', function (err) {
+    // Handle the error safely
+    console.error('--- Uncaught exception ---');
+    console.error(err);
+    console.error('--------------------------');
+  });
+
+  process.on('unhandledRejection', (reason, promise) => {
+    // Handle the error safely
+    console.error('--- Uncaught exception ---');
+    console.error(reason);
+    console.error('---');
+    console.error(promise);
+    console.error('--------------------------');
   });
 
   await cronQueue.add(
