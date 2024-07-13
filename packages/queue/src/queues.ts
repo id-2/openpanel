@@ -36,6 +36,10 @@ export interface EventsQueuePayloadCreateSessionEnd {
     'deviceId' | 'sessionId' | 'profileId'
   >;
 }
+
+// TODO: Rename `EventsQueuePayloadCreateSessionEnd`
+export type SessionsQueuePayload = EventsQueuePayloadCreateSessionEnd;
+
 export type EventsQueuePayload =
   | EventsQueuePayloadCreateEvent
   | EventsQueuePayloadCreateSessionEnd
@@ -59,6 +63,13 @@ export type CronQueuePayload =
   | CronQueuePayloadFlushProfiles;
 
 export const eventsQueue = new Queue<EventsQueuePayload>('events', {
+  connection,
+  defaultJobOptions: {
+    removeOnComplete: 10,
+  },
+});
+
+export const sessionsQueue = new Queue<SessionsQueuePayload>('sessions', {
   connection,
   defaultJobOptions: {
     removeOnComplete: 10,

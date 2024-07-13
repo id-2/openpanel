@@ -6,10 +6,11 @@ import { Worker } from 'bullmq';
 import express from 'express';
 
 import { connection, eventsQueue } from '@openpanel/queue';
-import { cronQueue } from '@openpanel/queue/src/queues';
+import { cronQueue, sessionsQueue } from '@openpanel/queue/src/queues';
 
 import { cronJob } from './jobs/cron';
 import { eventsJob } from './jobs/events';
+import { sessionsJob } from './jobs/sessions';
 
 const PORT = parseInt(process.env.WORKER_PORT || '3000', 10);
 const serverAdapter = new ExpressAdapter();
@@ -28,11 +29,19 @@ const workerOptions: WorkerOptions = {
 
 async function start() {
   const eventsWorker = new Worker(eventsQueue.name, eventsJob, workerOptions);
-
+  const sessionsWorker = new Worker(
+    sessionsQueue.name,
+    sessionsJob,
+    workerOptions
+  );
   const cronWorker = new Worker(cronQueue.name, cronJob, workerOptions);
 
   createBullBoard({
-    queues: [new BullMQAdapter(eventsQueue), new BullMQAdapter(cronQueue)],
+    queues: [
+      new BullMQAdapter(eventsQueue),
+      new BullMQAdapter(sessionsQueue),
+      new BullMQAdapter(cronQueue),
+    ],
     serverAdapter: serverAdapter,
   });
 
@@ -49,7 +58,7 @@ async function start() {
     }
   }
 
-  const workers = [eventsWorker, cronWorker];
+  const workers = [sessionsWorker, eventsWorker, cronWorker];
   workers.forEach((worker) => {
     worker.on('error', (err) => {
       workerLogger(worker.name, 'error', err);
@@ -67,6 +76,7 @@ async function start() {
   async function exitHandler(evtOrExitCodeOrError: number | string | Error) {
     try {
       await eventsWorker.close();
+      await sessionsWorker.close();
       await cronWorker.close();
     } catch (e) {
       console.error('EXIT HANDLER ERROR', e);

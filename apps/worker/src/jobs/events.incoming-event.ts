@@ -10,7 +10,7 @@ import type { IServiceCreateEventPayload } from '@openpanel/db';
 import { createEvent } from '@openpanel/db';
 import { getLastScreenViewFromProfileId } from '@openpanel/db/src/services/event.service';
 import { findJobByPrefix } from '@openpanel/queue';
-import { eventsQueue } from '@openpanel/queue/src/queues';
+import { eventsQueue, sessionsQueue } from '@openpanel/queue/src/queues';
 import type {
   EventsQueuePayloadCreateSessionEnd,
   EventsQueuePayloadIncomingEvent,
@@ -125,8 +125,8 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
     const diff = Date.now() - sessionEnd.job.timestamp;
     await sessionEnd.job.changeDelay(diff + SESSION_END_TIMEOUT);
   } else {
-    eventsQueue.add(
-      'event',
+    sessionsQueue.add(
+      'session',
       {
         type: 'createSessionEnd',
         payload: sessionEndPayload,
@@ -214,12 +214,10 @@ async function getSessionEnd({
   currentDeviceId: string;
   previousDeviceId: string;
 }) {
-  const sessionEndKeys = await redis.keys(
-    `bull:events:sessionEnd:${projectId}:*`
-  );
+  const sessionEndKeys = await redis.keys(`*:sessionEnd:${projectId}:*`);
 
   const sessionEndJobCurrentDeviceId = await findJobByPrefix(
-    eventsQueue,
+    sessionsQueue,
     sessionEndKeys,
     `sessionEnd:${projectId}:${currentDeviceId}:`
   );
@@ -227,13 +225,31 @@ async function getSessionEnd({
     return { deviceId: currentDeviceId, job: sessionEndJobCurrentDeviceId };
   }
 
-  const sessionEndJobPreviousDeviceId = await findJobByPrefix(
+  const sessionEndJobCurrentDeviceId2 = await findJobByPrefix(
     eventsQueue,
+    sessionEndKeys,
+    `sessionEnd:${projectId}:${currentDeviceId}:`
+  );
+  if (sessionEndJobCurrentDeviceId2) {
+    return { deviceId: currentDeviceId, job: sessionEndJobCurrentDeviceId2 };
+  }
+
+  const sessionEndJobPreviousDeviceId = await findJobByPrefix(
+    sessionsQueue,
     sessionEndKeys,
     `sessionEnd:${projectId}:${previousDeviceId}:`
   );
   if (sessionEndJobPreviousDeviceId) {
     return { deviceId: previousDeviceId, job: sessionEndJobPreviousDeviceId };
+  }
+
+  const sessionEndJobPreviousDeviceId2 = await findJobByPrefix(
+    eventsQueue,
+    sessionEndKeys,
+    `sessionEnd:${projectId}:${previousDeviceId}:`
+  );
+  if (sessionEndJobPreviousDeviceId2) {
+    return { deviceId: previousDeviceId, job: sessionEndJobPreviousDeviceId2 };
   }
 
   // Create session
