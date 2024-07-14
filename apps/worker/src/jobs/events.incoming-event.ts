@@ -116,27 +116,29 @@ export async function incomingEvent(job: Job<EventsQueuePayloadIncomingEvent>) {
     profileId,
   };
 
+  const sessionEndJobId =
+    sessionEnd?.job.id ??
+    `sessionEnd:${projectId}:${sessionEndPayload.deviceId}:${Date.now()}`;
+
   if (sessionEnd) {
     // If for some reason we have a session end job that is not a createSessionEnd job
     if (sessionEnd.job.data.type !== 'createSessionEnd') {
       throw new Error('Invalid session end job');
     }
 
-    const diff = Date.now() - sessionEnd.job.timestamp;
-    await sessionEnd.job.changeDelay(diff + SESSION_END_TIMEOUT);
-  } else {
-    sessionsQueue.add(
-      'session',
-      {
-        type: 'createSessionEnd',
-        payload: sessionEndPayload,
-      },
-      {
-        delay: SESSION_END_TIMEOUT,
-        jobId: `sessionEnd:${projectId}:${sessionEndPayload.deviceId}:${Date.now()}`,
-      }
-    );
+    await sessionEnd.job.remove();
   }
+  sessionsQueue.add(
+    'session',
+    {
+      type: 'createSessionEnd',
+      payload: sessionEndPayload,
+    },
+    {
+      delay: SESSION_END_TIMEOUT,
+      jobId: sessionEndJobId,
+    }
+  );
 
   const payload: Omit<IServiceCreateEventPayload, 'id'> = {
     name: body.name,
